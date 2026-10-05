@@ -10,6 +10,7 @@ import {SetupGuide} from './guide.js';
 import {MapEditor} from './map-editor.js';
 import {ScalingPanel} from './scaling.js';
 import {SiteWizard} from './site-wizard.js';
+import {WorkspaceEditor} from './editor.js';
 const $=id=>document.getElementById(id);
 const defaults={baseUrl:'http://127.0.0.1:8000/api/v1',pollSeconds:1,staleSeconds:15,flowThreshold:.1};
 function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback;}catch{return fallback;}}
@@ -43,6 +44,13 @@ const mapEditor=new MapEditor(context,management,reloadSettings),scalingPanel=ne
 const guide=new SetupGuide(context,{create:entity=>management.open(entity),map:()=>mapEditor.open(),setup:()=>management.openSetup(),scaling:()=>scalingPanel.open(),diagram:()=>{switchView('diagram');$('diagram-view').scrollIntoView({behavior:'smooth',block:'start'});}});
 const siteWizard=new SiteWizard(context,management,mapEditor,{toast,select:(siteId,deviceId)=>{selectedSite=siteId;selectedDevice=deviceId;selectedNode=deviceId?`DEVICE:${deviceId}`:`SAHA:${siteId}`;fitNext=true;refreshModel();render();},diagram:()=>{switchView('diagram');$('diagram-view').scrollIntoView({behavior:'smooth',block:'start'});}});
 const busy=()=>management.saving||mapEditor.saving||mapEditor.importer.saving||mapEditor.importer.loading||scalingPanel.saving;
+const editor=new WorkspaceEditor(context,{
+ toast,record:type=>management.open(({DM:'dm',TM:'tm',TRAFO:'trafo',ADP:'adp'})[type]||'devices'),
+ configure:(type,id)=>management.open(({DEVICE:'devices',DM:'dm',TM:'tm',TRAFO:'trafo',ADP:'adp'})[type],id),
+ site: id=>{if(id===undefined)management.open('sites');else{selectedSite=id;selectedNode=`SAHA:${id}`;selectedDevice=null;refreshModel();render();}},
+ devices:()=>management.open('devices'),profiles:()=>management.open('profiles'),map:()=>mapEditor.open(),scaling:()=>scalingPanel.open(),
+ setup:()=>management.openSetup(),settings:()=>$('open-settings').click(),demo:()=>$('toggle-demo').click(),legacy:()=>switchView('manage')
+});
 function logRequest(row){requestLog.unshift(row);requestLog=requestLog.slice(0,18);renderDiagnostics();}
 function refreshModel(){
   topology=buildTopology(config);states=statesForTopology(topology,measurements,config,settings,demo?{}:mappings,Date.now(),apiOnline||demo);
@@ -134,6 +142,7 @@ function renderDiagnostics(){
   $('request-log').innerHTML=requestLog.map(r=>`<tr><td class="mono">${esc(r.method||'GET')} /${esc(r.path)}</td><td>${r.ok?'<span class="state-chip online">'+esc(r.status)+'</span>':'<span class="state-chip bad">'+esc(r.status||'Erişilemiyor')+'</span>'}</td><td class="mono">${r.ms} ms</td><td>${esc(r.ok?(r.count===undefined?r.message:r.count+' kayıt'):r.message)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty-table">API istekleri burada görünür.</td></tr>';
 }
 function render(){
+  editor.update(states);
   const focus=document.activeElement?.dataset;const focusedNode=focus?.nodeKey,focusedDevice=focus?.device,focusedSite=focus?.site,focusedEdit=focus?.configEdit,focusedRecord=focus?.recordId,focusedList=focus?.configList,focusedInspect=focus?.configInspect;
   renderSites();renderMetrics();renderDiagram();renderDeviceRows();renderDetails();renderTrend();renderAllMeasurements();renderDiagnostics();management.render();renderNodeDialog();siteWizard.update();
   if(focusedNode)document.querySelector(`[data-node-key="${CSS.escape(focusedNode)}"]`)?.focus({preventScroll:true});
